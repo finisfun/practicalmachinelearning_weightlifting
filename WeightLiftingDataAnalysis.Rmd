@@ -1,0 +1,115 @@
+---
+title: "Weight Lifting Data Analysis"
+author: "Sachin Garg"
+date: "25 June 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This report analyses the data of weight lifting exercise data to predict how well the candidates perform particular exercises and if they make particular errors while doing the exercises.
+
+The data is used from accelerometers on the belt, forearm, arm and dumbbell of 6 participants.
+
+## Step 1: Data Cleansing
+
+### Step 1a
+The data is first downloaded on to a local repository. This includes separate data on training and the data for which predictions are to be made.
+
+As per the data the training set has 19622 records with 160 columns while the test data has 20 records with 160 columns.
+
+```{r, echo=FALSE}
+library(caret)
+
+if(!file.exists("./pml-training.csv"))
+   download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+              "./pml-training.csv")
+
+if(!file.exists("./pml-testing.csv"))
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+              "./pml-testing.csv")
+
+
+trainingdata <- read.csv("./pml-training.csv")
+
+testdata <- read.csv("./pml-testing.csv")
+
+dim(trainingdata)
+dim(testdata)
+```
+
+### Step 1b
+Next step is to compare the column names of the datasets and also to check the NA values in various columns.
+
+```{r, echo=FALSE}
+names(trainingdata)
+names(testdata)
+names(trainingdata) == names(testdata)
+sum(is.na(trainingdata))
+sum(is.na(testdata))
+```
+
+Thus it is clear that the training data has the last column as "classe" which is the variable to be predicted and the test data has the last column as an identifier for predictions.
+
+We further analyse that all the 160 columns are not of relevance. The relevant data to be used for predictions is in columns prefixed with "accel" / "gyros" / "magnet" / "roll" / "pitch" / "yaw" / "total" and also "picth" (found that the pitch is misspelled as picth in some of the column names). Thus the next step is to create a sub data set of both the data sets extracting only the relevant columns and the last column (classe column from training dataset and the prediction identifier from the test dataset).
+
+### Step 1c
+```{r, echo=FALSE}
+column_names_identifiers <- c(grep("^accel", names(trainingdata)),
+                              grep("^gyros",names(trainingdata)),
+                              grep("^magnet", names(trainingdata)),
+                              grep("^roll", names(trainingdata)),
+                              grep("^pitch", names(trainingdata)),
+                              grep("^yaw", names(trainingdata)),
+                              grep("^picth",names(trainingdata)),
+                              grep("^total",names(trainingdata)))
+
+trainingAnalysisSet <- trainingdata[,c(column_names_identifiers,160)]
+
+testAnalysisSet <- testdata[,c(column_names_identifiers,160)]
+
+names(trainingdata) == names(testdata)
+
+```
+
+## Step 2: Creating training and validation sets
+
+### Step 2a
+Next step is to divide the training set into training and validation set for validation of the models. The analysis was tried using qda and random forest methods. It is found that the random forest method gives better accuracy.
+
+```{r, echo=FALSE}
+set.seed(83042)
+inTrain <- createDataPartition(y=trainingAnalysisSet$classe, p=0.8, list=FALSE)
+subtrainingAnalysisSet <- trainingAnalysisSet[inTrain, ]
+subvalidationAnalysisSet <- trainingAnalysisSet[-inTrain, ]
+
+#Model Random Forest
+fitCtrlrf <- trainControl(method="cv",number=4,allowParallel=TRUE)
+modrf <- train(classe ~ ., data = subtrainingAnalysisSet, method = "rf",
+                trControl = fitCtrlrf)
+rfpredictionOfTrainingData <- predict(modrf,newdata=subtrainingAnalysisSet)
+rfequalPredictionsOfTrainingData <- (rfpredictionOfTrainingData == subtrainingAnalysisSet$classe)
+print(sum(rfequalPredictionsOfTrainingData)/length(rfequalPredictionsOfTrainingData))
+```
+
+### Step 2b
+Next we check the model accuracy on the validation data set.
+
+```{r, echo=FALSE}
+rfpredictionOfValidationData <- predict(modrf,newdata=subvalidationAnalysisSet)
+rfequalPredictionsOfValidationData <- (rfpredictionOfValidationData == subvalidationAnalysisSet$classe)
+print(sum(rfequalPredictionsOfValidationData)/length(rfequalPredictionsOfValidationData))
+```
+
+## Step 3: The predictions on the test data
+Having good confidence on the random forest, the predictions for the test data are found as follows:
+
+```{r, echo=FALSE}
+rfpredictionOfTestData <- predict(modrf, newdata=testdata)
+print(rbind(testdata[1:20, 160], as.character(rfpredictionOfTestData)))
+```
+
